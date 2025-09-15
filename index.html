@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オーディオ周波数アイソレーター (v5)</title>
+    <title>オーディオ周波数アイソレーター (v6)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -125,8 +125,8 @@
 <body>
 
     <div class="container">
-        <h1>オーディオ周波数アイソレーター (v5)</h1>
-        <h2>リアルタイムスペクトログラム・カラーバー表示</h2>
+        <h1>オーディオ周波数アイソレーター (v6)</h1>
+        <h2>スライダー連動・低速スクロール対応</h2>
 
         <input type="file" id="fileInput" accept="audio/*" style="display: none;">
         <button id="loadFileButton">ファイルを選択</button>
@@ -172,7 +172,6 @@
         const lowCutoffSlider = document.getElementById('lowCutoff');
         const lowCutoffValueDisplay = document.getElementById('lowCutoffValue');
         const yAxisContainer = document.getElementById('y-axis');
-        const colorBarContainer = document.getElementById('colorBarContainer');
 
         // --- グローバル変数 ---
         let audioContext;
@@ -182,17 +181,34 @@
         let biquadFilterHighpass;
         let audioBuffer;
         let animationFrameId;
+        let frameCounter = 0; // ★修正点1: フレームカウンタを追加
 
-        const FFT_SIZE = 2048; // 周波数分解能
-        const MAX_DB = 0;      // スペクトログラムの最大dB (例: 0dBFS)
-        const MIN_DB = -90;    // スペクトログラムの最小dB (例: -90dBFS)
+        const FFT_SIZE = 2048;
+        const MAX_DB = 0;
+        const MIN_DB = -90;
 
         // --- イベントリスナー ---
         loadFileButton.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleFileSelect);
         stopButton.addEventListener('click', stopPlayback);
-        highCutoffSlider.addEventListener('input', updateFilters);
-        lowCutoffSlider.addEventListener('input', updateFilters);
+        
+        // ★修正点2: スライダーのイベントリスナーを修正
+        highCutoffSlider.addEventListener('input', () => {
+            // 高域スライダーを動かした時、低域スライダーの値を下回ったら、低域スライダーも追従させる
+            if (parseInt(highCutoffSlider.value) < parseInt(lowCutoffSlider.value)) {
+                lowCutoffSlider.value = highCutoffSlider.value;
+            }
+            updateFilters();
+        });
+
+        lowCutoffSlider.addEventListener('input', () => {
+            // 低域スライダーを動かした時、高域スライダーの値を超えたら、高域スライダーも追従させる
+            if (parseInt(lowCutoffSlider.value) > parseInt(highCutoffSlider.value)) {
+                highCutoffSlider.value = lowCutoffSlider.value;
+            }
+            updateFilters();
+        });
+
 
         // --- ファイル選択処理 ---
         function handleFileSelect(event) {
@@ -200,8 +216,8 @@
             if (!file) return;
 
             statusDisplay.textContent = file.name;
-            stopPlayback(); // 以前の再生を停止
-            initAudioContext(); // AudioContextを初期化
+            stopPlayback();
+            initAudioContext();
 
             const reader = new FileReader();
             reader.onload = function(e) {
@@ -227,8 +243,9 @@
             
             analyser = audioContext.createAnalyser();
             analyser.fftSize = FFT_SIZE;
-            analyser.minDecibels = MIN_DB; // アナライザーの最小デシベルを設定
-            analyser.maxDecibels = MAX_DB; // アナライザーの最大デシベルを設定
+            analyser.minDecibels = MIN_DB;
+            analyser.maxDecibels = MAX_DB;
+            analyser.smoothingTimeConstant = 0.8; // 少し滑らかにする
 
             biquadFilterHighpass = audioContext.createBiquadFilter();
             biquadFilterHighpass.type = 'highpass';
@@ -241,38 +258,34 @@
         function playAudio() {
             if (!audioBuffer) return;
 
-            // ソースノードを毎回作成
             audioSource = audioContext.createBufferSource();
             audioSource.buffer = audioBuffer;
-            audioSource.loop = false; // ループしない
-            audioSource.onended = stopPlayback; // 再生終了時に停止処理を呼ぶ
+            audioSource.loop = false;
+            audioSource.onended = stopPlayback;
 
-            // ノードの接続: Source -> HighPass -> LowPass -> Analyser -> Destination
             audioSource.connect(biquadFilterHighpass);
             biquadFilterHighpass.connect(biquadFilterLowpass);
             biquadFilterLowpass.connect(analyser);
             analyser.connect(audioContext.destination);
 
-            // フィルターの初期値を設定
             updateFilters();
             
             audioSource.start(0);
             loadFileButton.style.display = 'none';
             stopButton.style.display = 'block';
             playbackLine.style.display = 'block';
-            playbackLine.style.left = '50%'; // リアルタイムモードでは中央固定
+            playbackLine.style.left = '50%';
 
-            // キャンバスをクリア
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            drawYAxis(); // Y軸を更新
-            drawSpectrogram(); // スペクトログラム描画開始
+            drawYAxis();
+            drawSpectrogram();
         }
 
         // --- 停止処理 ---
         function stopPlayback() {
             if (audioSource) {
-                try { audioSource.stop(0); } catch(e) {} // 既に停止している可能性を考慮
+                try { audioSource.stop(0); } catch(e) {}
                 audioSource.disconnect();
                 audioSource = null;
             }
@@ -281,7 +294,7 @@
                 animationFrameId = null;
             }
             if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close(); // AudioContextを閉じる
+                audioContext.close();
             }
             loadFileButton.style.display = 'block';
             stopButton.style.display = 'none';
@@ -295,60 +308,45 @@
             const maxFreq = audioContext.sampleRate / 2;
             const minFreq = 20;
 
-            // 高域カットオフ (ローパス)
             const highCutValue = logSlider(highCutoffSlider.value, minFreq, maxFreq);
             biquadFilterLowpass.frequency.setValueAtTime(highCutValue, audioContext.currentTime);
             highCutoffValueDisplay.textContent = Math.round(highCutValue);
 
-            // 低域カットオフ (ハイパス)
             const lowCutValue = logSlider(lowCutoffSlider.value, minFreq, maxFreq);
             biquadFilterHighpass.frequency.setValueAtTime(lowCutValue, audioContext.currentTime);
             lowCutoffValueDisplay.textContent = Math.round(lowCutValue);
         }
 
-        // --- 対数スライダー値計算ヘルパー ---
         function logSlider(position, min, max) {
             const minLog = Math.log(min);
             const maxLog = Math.log(max);
-            const scale = (maxLog - minLog) / 999; // 1 to 1000
+            const scale = (maxLog - minLog) / 999;
             return Math.exp(minLog + scale * (position - 1));
         }
 
-        // --- Y軸 (周波数) の描画 ---
         function drawYAxis() {
             yAxisContainer.innerHTML = '';
-            if (!audioContext) { // 初期状態や未選択時のダミー表示
+            if (!audioContext) {
                 yAxisContainer.insertAdjacentHTML('afterbegin', '<span>Hz</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>20k</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>10k</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>5k</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>1k</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>500</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>100</span>');
-                yAxisContainer.insertAdjacentHTML('beforeend', '<span>20</span>');
+                ['20k', '10k', '5k', '1k', '500', '100', '20'].forEach(label => yAxisContainer.insertAdjacentHTML('beforeend', `<div>${label}</div>`));
                 return;
             }
-            const maxFreq = audioContext.sampleRate / 2; // ナイキスト周波数
+            const maxFreq = audioContext.sampleRate / 2;
             const freqs = [20, 100, 500, 1000, 5000, 10000, 20000];
-
-            // キャンバスの高さに合わせてY軸のラベルを配置
             const height = canvas.clientHeight;
             
-            yAxisContainer.style.height = `${height}px`; // Y軸コンテナの高さをキャンバスに合わせる
-            yAxisContainer.style.position = 'relative'; // 絶対配置の基準にする
+            yAxisContainer.style.height = `${height}px`;
+            yAxisContainer.style.position = 'relative';
 
             freqs.forEach(freq => {
                 if (freq <= maxFreq) {
-                    // 周波数を対数スケールでキャンバスのY座標にマッピング
-                    // y = H - H * (log(f) - log(minF)) / (log(maxF) - log(minF))
                     const y = height - height * (Math.log(freq) - Math.log(freqs[0])) / (Math.log(maxFreq) - Math.log(freqs[0]));
-                    
                     const el = document.createElement('div');
                     el.textContent = freq >= 1000 ? `${Math.round(freq/1000)}k` : `${freq}`;
                     el.style.position = 'absolute';
-                    el.style.bottom = `${y / height * 100}%`; // bottomからの%で配置
+                    el.style.bottom = `${y / height * 100}%`;
                     el.style.right = '5px';
-                    el.style.transform = 'translateY(50%)'; // ラベルを中央に調整
+                    el.style.transform = 'translateY(50%)';
                     yAxisContainer.appendChild(el);
                 }
             });
@@ -358,34 +356,34 @@
         // --- スペクトログラム描画 (リアルタイム) ---
         function drawSpectrogram() {
             if (!analyser || !ctx) return;
+            
+            // ★修正点1: 描画更新を2フレームに1回にする
+            frameCounter++;
+            if (frameCounter % 2 !== 0) {
+                animationFrameId = requestAnimationFrame(drawSpectrogram);
+                return; // このフレームは描画をスキップ
+            }
 
-            const bufferLength = analyser.frequencyBinCount; // FFT_SIZE / 2
+            const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
-            analyser.getByteFrequencyData(dataArray); // dB値 (0-255) で取得
+            analyser.getByteFrequencyData(dataArray);
 
             const canvasWidth = canvas.width;
             const canvasHeight = canvas.height;
 
-            // 1. 現在のキャンバスのイメージを1ピクセル左にずらす
             const imageData = ctx.getImageData(1, 0, canvasWidth - 1, canvasHeight);
             ctx.putImageData(imageData, 0, 0);
 
-            // 2. 最新の周波数データをキャンバスの右端の1ピクセルに描画
             for (let i = 0; i < canvasHeight; i++) {
-                // Y軸の周波数マッピング (対数スケール)
-                // キャンバスの下から上へ周波数が高くなるように
                 const freqIndex = Math.floor((1 - i / canvasHeight) * bufferLength);
-                const value = dataArray[freqIndex]; // 0-255の値
-
-                // 値(0-255)をdBスケールにマッピングし、色に変換
-                const normalizedValue = (value / 255) * (MAX_DB - MIN_DB) + MIN_DB; // dB値に変換
+                const value = dataArray[freqIndex];
+                const normalizedValue = (value / 255) * (MAX_DB - MIN_DB) + MIN_DB;
                 const color = getColorForDecibel(normalizedValue);
                 
                 ctx.fillStyle = color;
                 ctx.fillRect(canvasWidth - 1, i, 1, 1);
             }
             
-            // 再生が終わったらループを止める
             if (audioSource && audioContext.state === 'running') {
                 animationFrameId = requestAnimationFrame(drawSpectrogram);
             } else {
@@ -393,55 +391,25 @@
             }
         }
 
-        // --- dB値から色を決定する関数 (参考画像のカラーバーに近似) ---
         function getColorForDecibel(db) {
-            // dB値を0-1の範囲に正規化 (MIN_DBからMAX_DBまで)
             const normalized = (db - MIN_DB) / (MAX_DB - MIN_DB);
 
-            // 参考画像のカラーバーに合わせてグラデーションを定義
-            // HSL (Hue, Saturation, Lightness) を使うと調整しやすい
-            let h, s, l;
-
-            if (normalized < 0.2) { // 黒〜濃い青
-                h = 240; s = 100; l = normalized * 25; // 青へ
-            } else if (normalized < 0.4) { // 濃い青〜青
-                h = 240; s = 100; l = 25 + (normalized - 0.2) * 50; // 青の明度を上げる
-            } else if (normalized < 0.6) { // 青〜シアン
-                h = 240 - (normalized - 0.4) * 200; // 青(240)からシアン(180)へ
-                s = 100; l = 75;
-            } else if (normalized < 0.8) { // シアン〜緑
-                h = 180 - (normalized - 0.6) * 100; // シアン(180)から緑(120)へ
-                s = 100; l = 75;
-            } else if (normalized < 0.9) { // 緑〜黄
-                h = 120 - (normalized - 0.8) * 60; // 緑(120)から黄(60)へ
-                s = 100; l = 75;
-            } else { // 黄〜赤
-                h = 60 - (normalized - 0.9) * 60; // 黄(60)から赤(0)へ
-                s = 100; l = 75;
-            }
-
-            // HSL値をCSSのrgb()形式に変換して返す
-            // return `hsl(${h}, ${s}%, ${l}%)`; // HSL直接では色が薄すぎる場合があるため、RGB変換が望ましい
-            // 簡単のため、今回はRGB値を直接設定したグラデーションのCSSに合わせます
-            // ここでは簡易的なグラデーションカラーマップを再現
-            if (normalized <= 0) return 'rgb(0,0,0)'; // 黒
-            if (normalized <= 0.1) return 'rgb(0,0,100)'; // 非常に暗い青
-            if (normalized <= 0.2) return 'rgb(0,0,180)'; // 暗い青
-            if (normalized <= 0.3) return 'rgb(0,0,255)'; // 青
-            if (normalized <= 0.4) return 'rgb(0,50,255)'; // 明るい青
-            if (normalized <= 0.5) return 'rgb(0,150,255)'; // スカイブルー
-            if (normalized <= 0.6) return 'rgb(0,255,255)'; // シアン
-            if (normalized <= 0.7) return 'rgb(0,255,150)'; // 青緑
-            if (normalized <= 0.8) return 'rgb(0,255,0)'; // 緑
-            if (normalized <= 0.9) return 'rgb(150,255,0)'; // 黄緑
-            if (normalized <= 0.95) return 'rgb(255,255,0)'; // 黄
-            return 'rgb(255,0,0)'; // 赤
+            if (normalized <= 0) return 'rgb(0,0,0)';
+            if (normalized <= 0.1) return 'rgb(0,0,100)';
+            if (normalized <= 0.2) return 'rgb(0,0,180)';
+            if (normalized <= 0.3) return 'rgb(0,0,255)';
+            if (normalized <= 0.4) return 'rgb(0,50,255)';
+            if (normalized <= 0.5) return 'rgb(0,150,255)';
+            if (normalized <= 0.6) return 'rgb(0,255,255)';
+            if (normalized <= 0.7) return 'rgb(0,255,150)';
+            if (normalized <= 0.8) return 'rgb(0,255,0)';
+            if (normalized <= 0.9) return 'rgb(150,255,0)';
+            if (normalized <= 0.95) return 'rgb(255,255,0)';
+            return 'rgb(255,0,0)';
         }
 
         // --- 初期化 ---
-        // 初回ロード時にY軸のダミー表示を呼ぶ
         drawYAxis();
-        // フィルタのスライダー値も初期化時に一度更新
         updateFilters();
     </script>
 </body>
