@@ -3,281 +3,446 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オーディオ周波数アイソレーター (Final)</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>オーディオ周波数アイソレーター (v5)</title>
     <style>
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1e1e2f;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            min-height: 100vh;
         }
-        input[type="range"] {
-            -webkit-appearance: none; appearance: none;
-            width: 100%; height: 8px; background: #4a5568;
-            border-radius: 9999px; outline: none; opacity: 0.7;
-            transition: opacity .2s;
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background-color: #2a2a40;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
         }
-        input[type="range"]:hover { opacity: 1; }
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none; appearance: none;
-            width: 20px; height: 20px; background: #3b82f6;
-            cursor: pointer; border-radius: 50%; border: 2px solid #e2e8f0;
+        h1, h2 {
+            text-align: center;
+            color: #a9a9ff;
+            margin-top: 0;
         }
-        input[type="range"]::-moz-range-thumb {
-            width: 20px; height: 20px; background: #3b82f6;
-            cursor: pointer; border-radius: 50%; border: 2px solid #e2e8f0;
+        h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
         }
-        #playbackIndicator {
-            position: absolute; top: 0; left: 0;
-            width: 2px; height: 100%;
-            background-color: rgba(239, 68, 68, 0.8); /* red-500 */
-            pointer-events: none;
-            will-change: transform;
+        h2 {
+            font-size: 1.1em;
+            font-weight: normal;
+            color: #b0b0b0;
+            margin-bottom: 25px;
         }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+        #loadFileButton { background-color: #4a4afc; color: white; margin-bottom: 10px; }
+        #loadFileButton:hover { background-color: #6a6aff; }
+        #stopButton { background-color: #f44336; color: white; }
+        #stopButton:hover { background-color: #ff6b60; }
+        button:active { transform: scale(0.98); }
+
+        #status { text-align: center; margin-top: 15px; color: #c0c0c0; word-break: break-all; height: 20px; }
+        
+        .spectrogram-area {
+            display: flex;
+            align-items: stretch;
+            margin-top: 20px;
+        }
+        #y-axis {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #aaa;
+            padding-right: 10px;
+            text-align: right;
+            width: 40px; /* Adjust as needed */
+        }
+        #spectrogramContainer {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            background-color: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-grow: 1;
+        }
+        canvas { width: 100%; height: 100%; }
+        #playbackLine {
+            position: absolute;
+            top: 0;
+            left: 50%; /* 中央に固定 */
+            width: 2px;
+            height: 100%;
+            background-color: red;
+            display: none;
+        }
+
+        #colorBarContainer {
+            width: 30px; /* カラーバーの幅 */
+            height: 300px;
+            margin-left: 10px;
+            background: linear-gradient(to top, 
+                #000000 0%, /* 黒 */
+                #00008b 20%, /* 濃い青 */
+                #0000ff 40%, /* 青 */
+                #00ffff 60%, /* シアン */
+                #00ff00 80%, /* 緑 */
+                #ffff00 90%, /* 黄 */
+                #ff0000 100% /* 赤 */
+            );
+            border-radius: 4px;
+            position: relative;
+        }
+        .db-label {
+            position: absolute;
+            right: 40px; /* カラーバーの右横に表示 */
+            font-size: 10px;
+            color: #ccc;
+            white-space: nowrap;
+        }
+
+        .controls { margin-top: 25px; }
+        label { display: block; margin: 20px 0 10px; font-size: 1em; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .cutoff-value { font-weight: bold; color: #6a6aff; }
     </style>
 </head>
-<body class="bg-gray-900 text-white flex flex-col items-center min-h-screen p-4">
+<body>
 
-    <div class="w-full max-w-4xl bg-gray-800 rounded-2xl shadow-lg p-6 space-y-6">
-        <header class="text-center">
-            <h1 class="text-3xl font-bold text-blue-400">オーディオ周波数アイソレーター (Final)</h1>
-            <p class="text-gray-400 mt-2">対数スペクトログラム表示に対応</p>
-        </header>
+    <div class="container">
+        <h1>オーディオ周波数アイソレーター (v5)</h1>
+        <h2>リアルタイムスペクトログラム・カラーバー表示</h2>
 
-        <div class="bg-gray-700/50 p-4 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div class="flex flex-col items-stretch gap-3">
-                <input type="file" id="fileInput" class="hidden" accept="audio/*"/>
-                <button id="uploadButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 w-full">
-                    ファイルを読み込む
-                </button>
-                <button id="playButton" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed w-full" disabled>
-                    再生
-                </button>
+        <input type="file" id="fileInput" accept="audio/*" style="display: none;">
+        <button id="loadFileButton">ファイルを選択</button>
+        <button id="stopButton" style="display:none;">停止</button>
+        <p id="status">ファイルが選択されていません</p>
+
+        <div class="spectrogram-area">
+            <div id="y-axis"></div>
+            <div id="spectrogramContainer">
+                <canvas id="spectrogramCanvas"></canvas>
+                <div id="playbackLine"></div>
             </div>
-            <p id="fileName" class="text-gray-400 text-sm truncate text-center sm:text-left sm:flex-1">ファイルが選択されていません</p>
+            <div id="colorBarContainer">
+                <span class="db-label" style="top: -5px;">0 dB</span>
+                <span class="db-label" style="top: 15%;"> -10 dB</span>
+                <span class="db-label" style="top: 35%;"> -30 dB</span>
+                <span class="db-label" style="top: 55%;"> -50 dB</span>
+                <span class="db-label" style="top: 75%;"> -70 dB</span>
+                <span class="db-label" style="bottom: -5px;">-90 dB</span>
+            </div>
         </div>
 
-        <div class="space-y-4">
-            <div id="canvasContainer" class="relative">
-                <canvas id="spectrogramCanvas" class="w-full h-64 bg-gray-900 rounded-lg"></canvas>
-                <div id="playbackIndicator" class="hidden"></div>
-                <div class="absolute top-0 right-[-65px] h-full text-xs text-gray-400 flex flex-col justify-between py-1 pr-2">
-                    <span id="maxFreqLabel">...kHz</span>
-                    <span id="midFreqLabel10k">10kHz</span>
-                    <span id="midFreqLabel1k">1kHz</span>
-                    <span id="midFreqLabel100">100Hz</span>
-                    <span>20Hz</span>
-                </div>
-            </div>
-            <div id="loadingIndicator" class="hidden text-center text-blue-400 py-8">
-                 <p>オーディオを解析・描画中...</p>
-                 <p class="text-sm text-gray-500">これには数秒かかる場合があります。</p>
-            </div>
+        <div class="controls">
+            <label for="highCutoff">高域カットオフ（対数）: <span id="highCutoffValue" class="cutoff-value">22050</span> Hz</label>
+            <input type="range" id="highCutoff" min="1" max="1000" value="1000">
 
-            <div id="sliderContainer" class="bg-gray-700/50 p-4 rounded-lg space-y-4 hidden">
-                <div>
-                    <div class="flex justify-between items-center text-sm mb-1">
-                        <label for="highPassSlider">高域カットオフ (対数)</label>
-                        <span id="highPassValue" class="font-mono text-blue-300">20 kHz</span>
-                    </div>
-                    <input type="range" id="highPassSlider" min="0" max="1000" value="1000" disabled>
-                </div>
-                <div>
-                    <div class="flex justify-between items-center text-sm mb-1">
-                        <label for="lowPassSlider">低域カットオフ (対数)</label>
-                        <span id="lowPassValue" class="font-mono text-blue-300">20 Hz</span>
-                    </div>
-                     <input type="range" id="lowPassSlider" min="0" max="1000" value="0" disabled>
-                </div>
-            </div>
+            <label for="lowCutoff">低域カットオフ（対数）: <span id="lowCutoffValue" class="cutoff-value">20</span> Hz</label>
+            <input type="range" id="lowCutoff" min="1" max="1000" value="1">
         </div>
     </div>
-    
+
     <script>
-        const fileInput = document.getElementById('fileInput'), uploadButton = document.getElementById('uploadButton'), playButton = document.getElementById('playButton'), fileNameDisplay = document.getElementById('fileName'), spectrogramCanvas = document.getElementById('spectrogramCanvas'), lowPassSlider = document.getElementById('lowPassSlider'), highPassSlider = document.getElementById('highPassSlider'), lowPassValueDisplay = document.getElementById('lowPassValue'), highPassValueDisplay = document.getElementById('highPassValue'), loadingIndicator = document.getElementById('loadingIndicator'), sliderContainer = document.getElementById('sliderContainer'), playbackIndicator = document.getElementById('playbackIndicator'), maxFreqLabel = document.getElementById('maxFreqLabel'), midFreqLabel10k = document.getElementById('midFreqLabel10k'), midFreqLabel1k = document.getElementById('midFreqLabel1k'), midFreqLabel100 = document.getElementById('midFreqLabel100');
-        let audioContext, audioBuffer, sourceNode, lowPassFilter, highPassFilter, isPlaying = false, startTime = 0, animationFrameId;
-        const FFT_SIZE = 4096, MIN_FREQ = 20;
-        let MAX_FREQ = 22050;
+        // --- DOM要素の取得 ---
+        const fileInput = document.getElementById('fileInput');
+        const loadFileButton = document.getElementById('loadFileButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusDisplay = document.getElementById('status');
+        const canvas = document.getElementById('spectrogramCanvas');
+        const ctx = canvas.getContext('2d');
+        const playbackLine = document.getElementById('playbackLine');
+        const highCutoffSlider = document.getElementById('highCutoff');
+        const highCutoffValueDisplay = document.getElementById('highCutoffValue');
+        const lowCutoffSlider = document.getElementById('lowCutoff');
+        const lowCutoffValueDisplay = document.getElementById('lowCutoffValue');
+        const yAxisContainer = document.getElementById('y-axis');
+        const colorBarContainer = document.getElementById('colorBarContainer');
 
-        const logBase = (max, min) => Math.log(max / min);
-        const toLog = (value, max, min) => min * Math.exp(logBase(max,min) * (value / 1000));
-        const fromLog = (freq, max, min) => (1000 / logBase(max,min)) * Math.log(freq / min);
+        // --- グローバル変数 ---
+        let audioContext;
+        let audioSource;
+        let analyser;
+        let biquadFilterLowpass;
+        let biquadFilterHighpass;
+        let audioBuffer;
+        let animationFrameId;
 
-        uploadButton.addEventListener('click', () => fileInput.click());
+        const FFT_SIZE = 2048; // 周波数分解能
+        const MAX_DB = 0;      // スペクトログラムの最大dB (例: 0dBFS)
+        const MIN_DB = -90;    // スペクトログラムの最小dB (例: -90dBFS)
+
+        // --- イベントリスナー ---
+        loadFileButton.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleFileSelect);
-        playButton.addEventListener('click', togglePlayback);
-        lowPassSlider.addEventListener('input', updateFilters);
-        highPassSlider.addEventListener('input', updateFilters);
+        stopButton.addEventListener('click', stopPlayback);
+        highCutoffSlider.addEventListener('input', updateFilters);
+        lowCutoffSlider.addEventListener('input', updateFilters);
 
-        async function handleFileSelect(event) {
+        // --- ファイル選択処理 ---
+        function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
-            if (isPlaying) togglePlayback();
-            cancelAnimationFrame(animationFrameId);
-            playbackIndicator.classList.add('hidden');
-            fileNameDisplay.textContent = file.name;
-            playButton.disabled = true;
-            sliderContainer.classList.add('hidden');
-            loadingIndicator.classList.remove('hidden');
-            spectrogramCanvas.classList.add('hidden');
-            try {
-                audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-                MAX_FREQ = audioContext.sampleRate / 2;
-                const arrayBuffer = await file.arrayBuffer();
-                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                await createAndDrawSpectrogram();
-                playButton.disabled = false;
-                lowPassSlider.disabled = false;
-                highPassSlider.disabled = false;
-                sliderContainer.classList.remove('hidden');
-                setupSliders();
-                updateFreqLabels();
-            } catch (e) {
-                console.error("オーディオ処理エラー:", e);
-                fileNameDisplay.textContent = "ファイルの読み込みに失敗";
-                alert("サポートされていないオーディオ形式か、ファイルが破損しています。");
-            } finally {
-                loadingIndicator.classList.add('hidden');
-                spectrogramCanvas.classList.remove('hidden');
-            }
-        }
-        
-        function setupSliders() {
-            highPassSlider.value = fromLog(MAX_FREQ, MAX_FREQ, MIN_FREQ);
-            lowPassSlider.value = fromLog(MIN_FREQ, MAX_FREQ, MIN_FREQ);
-            updateFilters();
-        }
 
-        async function createAndDrawSpectrogram() {
-            await new Promise(resolve => setTimeout(resolve, 50));
-            const canvas = spectrogramCanvas, ctx = canvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1, rect = canvas.getBoundingClientRect();
-            canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
+            statusDisplay.textContent = file.name;
+            stopPlayback(); // 以前の再生を停止
+            initAudioContext(); // AudioContextを初期化
 
-            const offlineCtx = new OfflineAudioContext(1, audioBuffer.length, audioBuffer.sampleRate);
-            const source = offlineCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            const analyser = offlineCtx.createAnalyser();
-            analyser.fftSize = FFT_SIZE;
-            const allFrequencyData = [];
-            const processor = offlineCtx.createScriptProcessor(FFT_SIZE / 2, 1, 1);
-            processor.onaudioprocess = () => {
-                const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(dataArray);
-                allFrequencyData.push(dataArray);
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioContext.decodeAudioData(e.target.result)
+                    .then(buffer => {
+                        audioBuffer = buffer;
+                        playAudio();
+                    })
+                    .catch(err => {
+                        console.error('Error decoding audio data:', err);
+                        statusDisplay.textContent = 'エラー: ファイルをデコードできません';
+                    });
             };
-            source.connect(analyser).connect(processor).connect(offlineCtx.destination);
-            source.start(0);
-            await offlineCtx.startRendering();
-            
-            ctx.fillStyle = '#111827'; ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+            reader.readAsArrayBuffer(file);
+        }
 
-            const sliceWidth = canvas.clientWidth / allFrequencyData.length;
-            const binCount = analyser.frequencyBinCount;
-            const freqResolution = audioContext.sampleRate / FFT_SIZE;
-            const logMax = Math.log(MAX_FREQ), logMin = Math.log(MIN_FREQ);
-            const logRange = logMax - logMin;
-            
-            const freqToY = (freq) => canvas.clientHeight * (1 - ((Math.log(freq) - logMin) / logRange));
-
-            for (let i = 0; i < allFrequencyData.length; i++) {
-                const sliceData = allFrequencyData[i];
-                const x = i * sliceWidth;
-                for (let j = 1; j < binCount; j++) {
-                    const value = sliceData[j];
-                    if (value === 0) continue;
-                    const freq = j * freqResolution;
-                    if (freq < MIN_FREQ || freq > MAX_FREQ) continue;
-                    const y = freqToY(freq);
-                    const nextFreq = (j + 1) * freqResolution;
-                    const nextY = freqToY(nextFreq);
-                    const barHeight = Math.max(1, y - nextY);
-                    ctx.fillStyle = getColorForValue(value);
-                    ctx.fillRect(x, y, sliceWidth + 1, barHeight);
-                }
+        // --- Web Audio APIの初期化 ---
+        function initAudioContext() {
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
             }
-        }
-        
-        function getColorForValue(v) {
-            const p = v / 255;
-            if (p < 0.2) return `hsl(240, 50%, ${p * 5 * 20}%)`;
-            if (p < 0.5) return `hsl(180, 70%, ${(p-0.2)*3.33*40+20}%)`;
-            if (p < 0.8) return `hsl(60, 80%, ${(p-0.5)*3.33*50+40}%)`;
-            return `hsl(0, 90%, ${(p-0.8)*5*60+60}%)`;
-        }
-        
-        function setupAudioNodes() {
-            sourceNode = audioContext.createBufferSource();
-            sourceNode.buffer = audioBuffer;
-            lowPassFilter = audioContext.createBiquadFilter(); lowPassFilter.type = 'lowpass';
-            highPassFilter = audioContext.createBiquadFilter(); highPassFilter.type = 'highpass';
-            sourceNode.connect(highPassFilter).connect(lowPassFilter).connect(audioContext.destination);
-            sourceNode.onended = () => { if(isPlaying) togglePlayback(); };
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = FFT_SIZE;
+            analyser.minDecibels = MIN_DB; // アナライザーの最小デシベルを設定
+            analyser.maxDecibels = MAX_DB; // アナライザーの最大デシベルを設定
+
+            biquadFilterHighpass = audioContext.createBiquadFilter();
+            biquadFilterHighpass.type = 'highpass';
+
+            biquadFilterLowpass = audioContext.createBiquadFilter();
+            biquadFilterLowpass.type = 'lowpass';
         }
 
-        function togglePlayback() {
-            if (audioContext.state === 'suspended') audioContext.resume();
-            isPlaying = !isPlaying;
-            if (isPlaying) {
-                setupAudioNodes();
-                updateFilters();
-                startTime = audioContext.currentTime;
-                sourceNode.start(0);
-                playButton.textContent = '停止';
-                playbackIndicator.classList.remove('hidden');
-                animate();
-            } else {
-                sourceNode.stop();
-                playButton.textContent = '再生';
+        // --- オーディオ再生 ---
+        function playAudio() {
+            if (!audioBuffer) return;
+
+            // ソースノードを毎回作成
+            audioSource = audioContext.createBufferSource();
+            audioSource.buffer = audioBuffer;
+            audioSource.loop = false; // ループしない
+            audioSource.onended = stopPlayback; // 再生終了時に停止処理を呼ぶ
+
+            // ノードの接続: Source -> HighPass -> LowPass -> Analyser -> Destination
+            audioSource.connect(biquadFilterHighpass);
+            biquadFilterHighpass.connect(biquadFilterLowpass);
+            biquadFilterLowpass.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            // フィルターの初期値を設定
+            updateFilters();
+            
+            audioSource.start(0);
+            loadFileButton.style.display = 'none';
+            stopButton.style.display = 'block';
+            playbackLine.style.display = 'block';
+            playbackLine.style.left = '50%'; // リアルタイムモードでは中央固定
+
+            // キャンバスをクリア
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawYAxis(); // Y軸を更新
+            drawSpectrogram(); // スペクトログラム描画開始
+        }
+
+        // --- 停止処理 ---
+        function stopPlayback() {
+            if (audioSource) {
+                try { audioSource.stop(0); } catch(e) {} // 既に停止している可能性を考慮
+                audioSource.disconnect();
+                audioSource = null;
+            }
+            if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
-                playbackIndicator.classList.add('hidden');
+                animationFrameId = null;
             }
-        }
-
-        function animate() {
-            const elapsedTime = audioContext.currentTime - startTime;
-            const progress = elapsedTime / audioBuffer.duration;
-            playbackIndicator.style.transform = `translateX(${progress * spectrogramCanvas.clientWidth}px)`;
-            if (progress < 1) animationFrameId = requestAnimationFrame(animate);
-        }
-
-        function formatFrequency(v) {
-            if (v >= 1000) return `${(v / 1000).toFixed(1)} kHz`;
-            return `${Math.round(v)} Hz`;
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close(); // AudioContextを閉じる
+            }
+            loadFileButton.style.display = 'block';
+            stopButton.style.display = 'none';
+            playbackLine.style.display = 'none';
         }
         
+        // --- フィルターの更新 ---
         function updateFilters() {
-            let lowSliderVal = parseInt(lowPassSlider.value), highSliderVal = parseInt(highPassSlider.value);
-            if (lowSliderVal > highSliderVal) {
-                if (this.id === 'lowPassSlider') highPassSlider.value = lowSliderVal;
-                else lowPassSlider.value = highSliderVal;
-            }
-            const lowCutoff = toLog(parseInt(lowPassSlider.value), MAX_FREQ, MIN_FREQ);
-            const highCutoff = toLog(parseInt(highPassSlider.value), MAX_FREQ, MIN_FREQ);
-            if (highPassFilter) highPassFilter.frequency.setValueAtTime(lowCutoff, audioContext.currentTime);
-            if (lowPassFilter) lowPassFilter.frequency.setValueAtTime(highCutoff, audioContext.currentTime);
-            lowPassValueDisplay.textContent = formatFrequency(lowCutoff);
-            highPassValueDisplay.textContent = formatFrequency(highCutoff);
+            if (!audioContext) return;
+
+            const maxFreq = audioContext.sampleRate / 2;
+            const minFreq = 20;
+
+            // 高域カットオフ (ローパス)
+            const highCutValue = logSlider(highCutoffSlider.value, minFreq, maxFreq);
+            biquadFilterLowpass.frequency.setValueAtTime(highCutValue, audioContext.currentTime);
+            highCutoffValueDisplay.textContent = Math.round(highCutValue);
+
+            // 低域カットオフ (ハイパス)
+            const lowCutValue = logSlider(lowCutoffSlider.value, minFreq, maxFreq);
+            biquadFilterHighpass.frequency.setValueAtTime(lowCutValue, audioContext.currentTime);
+            lowCutoffValueDisplay.textContent = Math.round(lowCutValue);
         }
 
-        function updateFreqLabels(){
-            const logMax = Math.log(MAX_FREQ), logMin = Math.log(MIN_FREQ);
-            const logRange = logMax - logMin;
-            const setLabelPos = (label, freq) => {
-                if (freq < MAX_FREQ && freq > MIN_FREQ) {
-                    label.style.display = 'block';
-                    label.style.position = 'absolute';
-                    label.style.bottom = `${100 * (Math.log(freq) - logMin) / logRange}%`;
-                    label.style.transform = `translateY(50%)`;
-                } else {
-                    label.style.display = 'none';
-                }
-            }
-            maxFreqLabel.textContent = `${(MAX_FREQ/1000).toFixed(1)}kHz`;
-            setLabelPos(midFreqLabel10k, 10000);
-            setLabelPos(midFreqLabel1k, 1000);
-            setLabelPos(midFreqLabel100, 100);
+        // --- 対数スライダー値計算ヘルパー ---
+        function logSlider(position, min, max) {
+            const minLog = Math.log(min);
+            const maxLog = Math.log(max);
+            const scale = (maxLog - minLog) / 999; // 1 to 1000
+            return Math.exp(minLog + scale * (position - 1));
         }
+
+        // --- Y軸 (周波数) の描画 ---
+        function drawYAxis() {
+            yAxisContainer.innerHTML = '';
+            if (!audioContext) { // 初期状態や未選択時のダミー表示
+                yAxisContainer.insertAdjacentHTML('afterbegin', '<span>Hz</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>20k</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>10k</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>5k</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>1k</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>500</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>100</span>');
+                yAxisContainer.insertAdjacentHTML('beforeend', '<span>20</span>');
+                return;
+            }
+            const maxFreq = audioContext.sampleRate / 2; // ナイキスト周波数
+            const freqs = [20, 100, 500, 1000, 5000, 10000, 20000];
+
+            // キャンバスの高さに合わせてY軸のラベルを配置
+            const height = canvas.clientHeight;
+            
+            yAxisContainer.style.height = `${height}px`; // Y軸コンテナの高さをキャンバスに合わせる
+            yAxisContainer.style.position = 'relative'; // 絶対配置の基準にする
+
+            freqs.forEach(freq => {
+                if (freq <= maxFreq) {
+                    // 周波数を対数スケールでキャンバスのY座標にマッピング
+                    // y = H - H * (log(f) - log(minF)) / (log(maxF) - log(minF))
+                    const y = height - height * (Math.log(freq) - Math.log(freqs[0])) / (Math.log(maxFreq) - Math.log(freqs[0]));
+                    
+                    const el = document.createElement('div');
+                    el.textContent = freq >= 1000 ? `${Math.round(freq/1000)}k` : `${freq}`;
+                    el.style.position = 'absolute';
+                    el.style.bottom = `${y / height * 100}%`; // bottomからの%で配置
+                    el.style.right = '5px';
+                    el.style.transform = 'translateY(50%)'; // ラベルを中央に調整
+                    yAxisContainer.appendChild(el);
+                }
+            });
+            yAxisContainer.insertAdjacentHTML('afterbegin', '<span style="position:absolute; top: -15px; right: 5px;">Hz</span>');
+        }
+
+        // --- スペクトログラム描画 (リアルタイム) ---
+        function drawSpectrogram() {
+            if (!analyser || !ctx) return;
+
+            const bufferLength = analyser.frequencyBinCount; // FFT_SIZE / 2
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray); // dB値 (0-255) で取得
+
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+
+            // 1. 現在のキャンバスのイメージを1ピクセル左にずらす
+            const imageData = ctx.getImageData(1, 0, canvasWidth - 1, canvasHeight);
+            ctx.putImageData(imageData, 0, 0);
+
+            // 2. 最新の周波数データをキャンバスの右端の1ピクセルに描画
+            for (let i = 0; i < canvasHeight; i++) {
+                // Y軸の周波数マッピング (対数スケール)
+                // キャンバスの下から上へ周波数が高くなるように
+                const freqIndex = Math.floor((1 - i / canvasHeight) * bufferLength);
+                const value = dataArray[freqIndex]; // 0-255の値
+
+                // 値(0-255)をdBスケールにマッピングし、色に変換
+                const normalizedValue = (value / 255) * (MAX_DB - MIN_DB) + MIN_DB; // dB値に変換
+                const color = getColorForDecibel(normalizedValue);
+                
+                ctx.fillStyle = color;
+                ctx.fillRect(canvasWidth - 1, i, 1, 1);
+            }
+            
+            // 再生が終わったらループを止める
+            if (audioSource && audioContext.state === 'running') {
+                animationFrameId = requestAnimationFrame(drawSpectrogram);
+            } else {
+                 stopPlayback();
+            }
+        }
+
+        // --- dB値から色を決定する関数 (参考画像のカラーバーに近似) ---
+        function getColorForDecibel(db) {
+            // dB値を0-1の範囲に正規化 (MIN_DBからMAX_DBまで)
+            const normalized = (db - MIN_DB) / (MAX_DB - MIN_DB);
+
+            // 参考画像のカラーバーに合わせてグラデーションを定義
+            // HSL (Hue, Saturation, Lightness) を使うと調整しやすい
+            let h, s, l;
+
+            if (normalized < 0.2) { // 黒〜濃い青
+                h = 240; s = 100; l = normalized * 25; // 青へ
+            } else if (normalized < 0.4) { // 濃い青〜青
+                h = 240; s = 100; l = 25 + (normalized - 0.2) * 50; // 青の明度を上げる
+            } else if (normalized < 0.6) { // 青〜シアン
+                h = 240 - (normalized - 0.4) * 200; // 青(240)からシアン(180)へ
+                s = 100; l = 75;
+            } else if (normalized < 0.8) { // シアン〜緑
+                h = 180 - (normalized - 0.6) * 100; // シアン(180)から緑(120)へ
+                s = 100; l = 75;
+            } else if (normalized < 0.9) { // 緑〜黄
+                h = 120 - (normalized - 0.8) * 60; // 緑(120)から黄(60)へ
+                s = 100; l = 75;
+            } else { // 黄〜赤
+                h = 60 - (normalized - 0.9) * 60; // 黄(60)から赤(0)へ
+                s = 100; l = 75;
+            }
+
+            // HSL値をCSSのrgb()形式に変換して返す
+            // return `hsl(${h}, ${s}%, ${l}%)`; // HSL直接では色が薄すぎる場合があるため、RGB変換が望ましい
+            // 簡単のため、今回はRGB値を直接設定したグラデーションのCSSに合わせます
+            // ここでは簡易的なグラデーションカラーマップを再現
+            if (normalized <= 0) return 'rgb(0,0,0)'; // 黒
+            if (normalized <= 0.1) return 'rgb(0,0,100)'; // 非常に暗い青
+            if (normalized <= 0.2) return 'rgb(0,0,180)'; // 暗い青
+            if (normalized <= 0.3) return 'rgb(0,0,255)'; // 青
+            if (normalized <= 0.4) return 'rgb(0,50,255)'; // 明るい青
+            if (normalized <= 0.5) return 'rgb(0,150,255)'; // スカイブルー
+            if (normalized <= 0.6) return 'rgb(0,255,255)'; // シアン
+            if (normalized <= 0.7) return 'rgb(0,255,150)'; // 青緑
+            if (normalized <= 0.8) return 'rgb(0,255,0)'; // 緑
+            if (normalized <= 0.9) return 'rgb(150,255,0)'; // 黄緑
+            if (normalized <= 0.95) return 'rgb(255,255,0)'; // 黄
+            return 'rgb(255,0,0)'; // 赤
+        }
+
+        // --- 初期化 ---
+        // 初回ロード時にY軸のダミー表示を呼ぶ
+        drawYAxis();
+        // フィルタのスライダー値も初期化時に一度更新
+        updateFilters();
     </script>
 </body>
 </html>
