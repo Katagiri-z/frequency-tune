@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オーディオ周波数アイソレーター (v7)</title>
+    <title>オーディオ周波数アイソレーター (v6)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -30,41 +30,91 @@
             color: #a9a9ff;
             margin-top: 0;
         }
-        h1 { font-size: 1.8em; margin-bottom: 5px; }
-        h2 { font-size: 1.1em; font-weight: normal; color: #b0b0b0; margin-bottom: 25px; }
-        
+        h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+        h2 {
+            font-size: 1.1em;
+            font-weight: normal;
+            color: #b0b0b0;
+            margin-bottom: 25px;
+        }
         button {
-            padding: 12px 20px;
-            font-size: 1em;
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s;
         }
-        #loadFileButton { width: 100%; background-color: #4a4afc; color: white; }
+        #loadFileButton { background-color: #4a4afc; color: white; margin-bottom: 10px; }
         #loadFileButton:hover { background-color: #6a6aff; }
-        button:active { transform: scale(0.98); }
-
-        .playback-controls {
-            display: none; /* Initially hidden */
-            justify-content: center;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        #playPauseButton { background-color: #4CAF50; color: white; min-width: 120px; }
-        #playPauseButton:hover { background-color: #66bb6a; }
         #stopButton { background-color: #f44336; color: white; }
         #stopButton:hover { background-color: #ff6b60; }
+        button:active { transform: scale(0.98); }
 
         #status { text-align: center; margin-top: 15px; color: #c0c0c0; word-break: break-all; height: 20px; }
         
-        .spectrogram-area { display: flex; align-items: stretch; margin-top: 20px; }
-        #y-axis { width: 40px; text-align: right; font-size: 12px; color: #aaa; padding-right: 10px; position: relative; }
-        #spectrogramContainer { position: relative; width: 100%; height: 300px; background-color: #000; border-radius: 4px; overflow: hidden; flex-grow: 1; }
+        .spectrogram-area {
+            display: flex;
+            align-items: stretch;
+            margin-top: 20px;
+        }
+        #y-axis {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #aaa;
+            padding-right: 10px;
+            text-align: right;
+            width: 40px; /* Adjust as needed */
+        }
+        #spectrogramContainer {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            background-color: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            flex-grow: 1;
+        }
         canvas { width: 100%; height: 100%; }
-        #playbackLine { position: absolute; top: 0; left: 50%; width: 2px; height: 100%; background-color: red; display: none; }
-        #colorBarContainer { width: 30px; height: 300px; margin-left: 10px; background: linear-gradient(to top, #000000, #00008b, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000); border-radius: 4px; position: relative; }
-        .db-label { position: absolute; right: 40px; font-size: 10px; color: #ccc; white-space: nowrap; }
+        #playbackLine {
+            position: absolute;
+            top: 0;
+            left: 50%; /* 中央に固定 */
+            width: 2px;
+            height: 100%;
+            background-color: red;
+            display: none;
+        }
+
+        #colorBarContainer {
+            width: 30px; /* カラーバーの幅 */
+            height: 300px;
+            margin-left: 10px;
+            background: linear-gradient(to top, 
+                #000000 0%, /* 黒 */
+                #00008b 20%, /* 濃い青 */
+                #0000ff 40%, /* 青 */
+                #00ffff 60%, /* シアン */
+                #00ff00 80%, /* 緑 */
+                #ffff00 90%, /* 黄 */
+                #ff0000 100% /* 赤 */
+            );
+            border-radius: 4px;
+            position: relative;
+        }
+        .db-label {
+            position: absolute;
+            right: 40px; /* カラーバーの右横に表示 */
+            font-size: 10px;
+            color: #ccc;
+            white-space: nowrap;
+        }
 
         .controls { margin-top: 25px; }
         label { display: block; margin: 20px 0 10px; font-size: 1em; }
@@ -73,12 +123,14 @@
     </style>
 </head>
 <body>
+
     <div class="container">
-        <h1>オーディオ周波数アイソレーター (v7)</h1>
-        <h2>再生/停止ボタン・Y軸修正</h2>
+        <h1>オーディオ周波数アイソレーター (v6)</h1>
+        <h2>スライダー連動・低速スクロール対応</h2>
 
         <input type="file" id="fileInput" accept="audio/*" style="display: none;">
         <button id="loadFileButton">ファイルを選択</button>
+        <button id="stopButton" style="display:none;">停止</button>
         <p id="status">ファイルが選択されていません</p>
 
         <div class="spectrogram-area">
@@ -88,20 +140,19 @@
                 <div id="playbackLine"></div>
             </div>
             <div id="colorBarContainer">
-                <span class="db-label" style="top: -5px;">0 dB</span><span class="db-label" style="top: 15%;"> -10 dB</span>
-                <span class="db-label" style="top: 35%;"> -30 dB</span><span class="db-label" style="top: 55%;"> -50 dB</span>
-                <span class="db-label" style="top: 75%;"> -70 dB</span><span class="db-label" style="bottom: -5px;">-90 dB</span>
+                <span class="db-label" style="top: -5px;">0 dB</span>
+                <span class="db-label" style="top: 15%;"> -10 dB</span>
+                <span class="db-label" style="top: 35%;"> -30 dB</span>
+                <span class="db-label" style="top: 55%;"> -50 dB</span>
+                <span class="db-label" style="top: 75%;"> -70 dB</span>
+                <span class="db-label" style="bottom: -5px;">-90 dB</span>
             </div>
-        </div>
-        
-        <div class="playback-controls" id="playbackControls">
-            <button id="playPauseButton">再生</button>
-            <button id="stopButton">停止</button>
         </div>
 
         <div class="controls">
             <label for="highCutoff">高域カットオフ（対数）: <span id="highCutoffValue" class="cutoff-value">22050</span> Hz</label>
             <input type="range" id="highCutoff" min="1" max="1000" value="1000">
+
             <label for="lowCutoff">低域カットオフ（対数）: <span id="lowCutoffValue" class="cutoff-value">20</span> Hz</label>
             <input type="range" id="lowCutoff" min="1" max="1000" value="1">
         </div>
@@ -111,131 +162,130 @@
         // --- DOM要素の取得 ---
         const fileInput = document.getElementById('fileInput');
         const loadFileButton = document.getElementById('loadFileButton');
+        const stopButton = document.getElementById('stopButton');
         const statusDisplay = document.getElementById('status');
         const canvas = document.getElementById('spectrogramCanvas');
         const ctx = canvas.getContext('2d');
         const playbackLine = document.getElementById('playbackLine');
-        const yAxisContainer = document.getElementById('y-axis');
-        const playbackControls = document.getElementById('playbackControls');
-        const playPauseButton = document.getElementById('playPauseButton');
-        const stopButton = document.getElementById('stopButton');
         const highCutoffSlider = document.getElementById('highCutoff');
         const highCutoffValueDisplay = document.getElementById('highCutoffValue');
         const lowCutoffSlider = document.getElementById('lowCutoff');
         const lowCutoffValueDisplay = document.getElementById('lowCutoffValue');
+        const yAxisContainer = document.getElementById('y-axis');
 
         // --- グローバル変数 ---
-        let audioContext, audioSource, analyser, biquadFilterLowpass, biquadFilterHighpass;
+        let audioContext;
+        let audioSource;
+        let analyser;
+        let biquadFilterLowpass;
+        let biquadFilterHighpass;
         let audioBuffer;
         let animationFrameId;
-        let frameCounter = 0;
-        let isAudioSetup = false;
+        let frameCounter = 0; // ★修正点1: フレームカウンタを追加
 
-        const FFT_SIZE = 2048, MAX_DB = 0, MIN_DB = -90;
+        const FFT_SIZE = 2048;
+        const MAX_DB = 0;
+        const MIN_DB = -90;
 
         // --- イベントリスナー ---
         loadFileButton.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleFileSelect);
-        playPauseButton.addEventListener('click', togglePlayPause);
         stopButton.addEventListener('click', stopPlayback);
         
+        // ★修正点2: スライダーのイベントリスナーを修正
         highCutoffSlider.addEventListener('input', () => {
+            // 高域スライダーを動かした時、低域スライダーの値を下回ったら、低域スライダーも追従させる
             if (parseInt(highCutoffSlider.value) < parseInt(lowCutoffSlider.value)) {
                 lowCutoffSlider.value = highCutoffSlider.value;
             }
             updateFilters();
         });
+
         lowCutoffSlider.addEventListener('input', () => {
+            // 低域スライダーを動かした時、高域スライダーの値を超えたら、高域スライダーも追従させる
             if (parseInt(lowCutoffSlider.value) > parseInt(highCutoffSlider.value)) {
                 highCutoffSlider.value = lowCutoffSlider.value;
             }
             updateFilters();
         });
 
-        // --- メイン処理 ---
-        async function handleFileSelect(event) {
+
+        // --- ファイル選択処理 ---
+        function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
-            await stopPlayback();
-            statusDisplay.textContent = `${file.name} を読み込み中...`;
-            
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                
-                prepareToPlay();
-                statusDisplay.textContent = `再生準備完了: ${file.name}`;
-            } catch (err) {
-                console.error('Error processing audio file:', err);
-                statusDisplay.textContent = 'エラー: ファイルを処理できません';
-            }
+            statusDisplay.textContent = file.name;
+            stopPlayback();
+            initAudioContext();
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                audioContext.decodeAudioData(e.target.result)
+                    .then(buffer => {
+                        audioBuffer = buffer;
+                        playAudio();
+                    })
+                    .catch(err => {
+                        console.error('Error decoding audio data:', err);
+                        statusDisplay.textContent = 'エラー: ファイルをデコードできません';
+                    });
+            };
+            reader.readAsArrayBuffer(file);
         }
-        
-        function prepareToPlay() {
-            // アナライザーとフィルターを初期化
+
+        // --- Web Audio APIの初期化 ---
+        function initAudioContext() {
+            if (audioContext && audioContext.state !== 'closed') {
+                audioContext.close();
+            }
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
             analyser = audioContext.createAnalyser();
             analyser.fftSize = FFT_SIZE;
             analyser.minDecibels = MIN_DB;
             analyser.maxDecibels = MAX_DB;
-            analyser.smoothingTimeConstant = 0.8;
+            analyser.smoothingTimeConstant = 0.8; // 少し滑らかにする
 
             biquadFilterHighpass = audioContext.createBiquadFilter();
             biquadFilterHighpass.type = 'highpass';
+
             biquadFilterLowpass = audioContext.createBiquadFilter();
             biquadFilterLowpass.type = 'lowpass';
+        }
 
-            // ソースノードを作成し、バッファをセット
+        // --- オーディオ再生 ---
+        function playAudio() {
+            if (!audioBuffer) return;
+
             audioSource = audioContext.createBufferSource();
             audioSource.buffer = audioBuffer;
-            audioSource.onended = () => {
-                // 再生が自然に終了したら停止状態にする
-                if (audioContext.state !== 'suspended') stopPlayback();
-            };
-            
-            // ノード接続
+            audioSource.loop = false;
+            audioSource.onended = stopPlayback;
+
             audioSource.connect(biquadFilterHighpass);
             biquadFilterHighpass.connect(biquadFilterLowpass);
             biquadFilterLowpass.connect(analyser);
             analyser.connect(audioContext.destination);
 
             updateFilters();
-            drawYAxis();
             
-            // UIを更新
-            playbackControls.style.display = 'flex';
-            playPauseButton.textContent = '再生';
-            isAudioSetup = true;
+            audioSource.start(0);
+            loadFileButton.style.display = 'none';
+            stopButton.style.display = 'block';
+            playbackLine.style.display = 'block';
+            playbackLine.style.left = '50%';
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            drawYAxis();
+            drawSpectrogram();
         }
 
-        function togglePlayPause() {
-            if (!isAudioSetup) return;
-
-            if (audioContext.state === 'running') {
-                // 再生中 -> 一時停止
-                audioContext.suspend().then(() => {
-                    playPauseButton.textContent = '再生';
-                    cancelAnimationFrame(animationFrameId);
-                });
-            } else if (audioContext.state === 'suspended') {
-                // 一時停止中 -> 再生
-                audioContext.resume().then(() => {
-                    playPauseButton.textContent = '一時停止';
-                    drawSpectrogram();
-                });
-            } else {
-                // 初回再生
-                audioSource.start(0);
-                playPauseButton.textContent = '一時停止';
-                playbackLine.style.display = 'block';
-                drawSpectrogram();
-            }
-        }
-
-        async function stopPlayback() {
+        // --- 停止処理 ---
+        function stopPlayback() {
             if (audioSource) {
-                try { audioSource.onended = null; audioSource.stop(0); } catch(e) {}
+                try { audioSource.stop(0); } catch(e) {}
                 audioSource.disconnect();
                 audioSource = null;
             }
@@ -244,26 +294,26 @@
                 animationFrameId = null;
             }
             if (audioContext && audioContext.state !== 'closed') {
-                await audioContext.close();
+                audioContext.close();
             }
-            // UIをリセット
-            playbackControls.style.display = 'none';
+            loadFileButton.style.display = 'block';
+            stopButton.style.display = 'none';
             playbackLine.style.display = 'none';
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            isAudioSetup = false;
         }
         
-        // --- フィルターと描画 ---
+        // --- フィルターの更新 ---
         function updateFilters() {
             if (!audioContext) return;
+
             const maxFreq = audioContext.sampleRate / 2;
             const minFreq = 20;
+
             const highCutValue = logSlider(highCutoffSlider.value, minFreq, maxFreq);
-            if(biquadFilterLowpass) biquadFilterLowpass.frequency.setValueAtTime(highCutValue, audioContext.currentTime);
+            biquadFilterLowpass.frequency.setValueAtTime(highCutValue, audioContext.currentTime);
             highCutoffValueDisplay.textContent = Math.round(highCutValue);
 
             const lowCutValue = logSlider(lowCutoffSlider.value, minFreq, maxFreq);
-            if(biquadFilterHighpass) biquadFilterHighpass.frequency.setValueAtTime(lowCutValue, audioContext.currentTime);
+            biquadFilterHighpass.frequency.setValueAtTime(lowCutValue, audioContext.currentTime);
             lowCutoffValueDisplay.textContent = Math.round(lowCutValue);
         }
 
@@ -276,18 +326,21 @@
 
         function drawYAxis() {
             yAxisContainer.innerHTML = '';
-            if (!audioContext) return;
-
+            if (!audioContext) {
+                yAxisContainer.insertAdjacentHTML('afterbegin', '<span>Hz</span>');
+                ['20k', '10k', '5k', '1k', '500', '100', '20'].forEach(label => yAxisContainer.insertAdjacentHTML('beforeend', `<div>${label}</div>`));
+                return;
+            }
             const maxFreq = audioContext.sampleRate / 2;
             const freqs = [20, 100, 500, 1000, 5000, 10000, 20000];
             const height = canvas.clientHeight;
             
             yAxisContainer.style.height = `${height}px`;
+            yAxisContainer.style.position = 'relative';
 
             freqs.forEach(freq => {
                 if (freq <= maxFreq) {
-                    // ★修正点: Y軸の計算式を修正
-                    const y = height * (Math.log(freq) - Math.log(freqs[0])) / (Math.log(maxFreq) - Math.log(freqs[0]));
+                    const y = height - height * (Math.log(freq) - Math.log(freqs[0])) / (Math.log(maxFreq) - Math.log(freqs[0]));
                     const el = document.createElement('div');
                     el.textContent = freq >= 1000 ? `${Math.round(freq/1000)}k` : `${freq}`;
                     el.style.position = 'absolute';
@@ -300,13 +353,15 @@
             yAxisContainer.insertAdjacentHTML('afterbegin', '<span style="position:absolute; top: -15px; right: 5px;">Hz</span>');
         }
 
+        // --- スペクトログラム描画 (リアルタイム) ---
         function drawSpectrogram() {
-            if (!analyser || !ctx || audioContext.state !== 'running') return;
+            if (!analyser || !ctx) return;
             
+            // ★修正点1: 描画更新を2フレームに1回にする
             frameCounter++;
             if (frameCounter % 2 !== 0) {
                 animationFrameId = requestAnimationFrame(drawSpectrogram);
-                return;
+                return; // このフレームは描画をスキップ
             }
 
             const bufferLength = analyser.frequencyBinCount;
@@ -315,6 +370,7 @@
 
             const canvasWidth = canvas.width;
             const canvasHeight = canvas.height;
+
             const imageData = ctx.getImageData(1, 0, canvasWidth - 1, canvasHeight);
             ctx.putImageData(imageData, 0, 0);
 
@@ -328,20 +384,32 @@
                 ctx.fillRect(canvasWidth - 1, i, 1, 1);
             }
             
-            animationFrameId = requestAnimationFrame(drawSpectrogram);
+            if (audioSource && audioContext.state === 'running') {
+                animationFrameId = requestAnimationFrame(drawSpectrogram);
+            } else {
+                 stopPlayback();
+            }
         }
 
         function getColorForDecibel(db) {
             const normalized = (db - MIN_DB) / (MAX_DB - MIN_DB);
+
             if (normalized <= 0) return 'rgb(0,0,0)';
-            if (normalized <= 0.1) return 'rgb(0,0,100)'; if (normalized <= 0.2) return 'rgb(0,0,180)';
-            if (normalized <= 0.3) return 'rgb(0,0,255)'; if (normalized <= 0.4) return 'rgb(0,50,255)';
-            if (normalized <= 0.5) return 'rgb(0,150,255)'; if (normalized <= 0.6) return 'rgb(0,255,255)';
-            if (normalized <= 0.7) return 'rgb(0,255,150)'; if (normalized <= 0.8) return 'rgb(0,255,0)';
-            if (normalized <= 0.9) return 'rgb(150,255,0)'; if (normalized <= 0.95) return 'rgb(255,255,0)';
+            if (normalized <= 0.1) return 'rgb(0,0,100)';
+            if (normalized <= 0.2) return 'rgb(0,0,180)';
+            if (normalized <= 0.3) return 'rgb(0,0,255)';
+            if (normalized <= 0.4) return 'rgb(0,50,255)';
+            if (normalized <= 0.5) return 'rgb(0,150,255)';
+            if (normalized <= 0.6) return 'rgb(0,255,255)';
+            if (normalized <= 0.7) return 'rgb(0,255,150)';
+            if (normalized <= 0.8) return 'rgb(0,255,0)';
+            if (normalized <= 0.9) return 'rgb(150,255,0)';
+            if (normalized <= 0.95) return 'rgb(255,255,0)';
             return 'rgb(255,0,0)';
         }
-        
+
+        // --- 初期化 ---
+        drawYAxis();
         updateFilters();
     </script>
 </body>
