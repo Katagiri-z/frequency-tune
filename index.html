@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オーディオ周波数アイソレーター (v6)</title>
+    <title>オーディオ周波数アイソレーター (v9)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -49,11 +49,26 @@
             cursor: pointer;
             transition: background-color 0.3s, transform 0.1s;
         }
-        #loadFileButton { background-color: #4a4afc; color: white; margin-bottom: 10px; }
+        #loadFileButton { background-color: #4a4afc; color: white; }
         #loadFileButton:hover { background-color: #6a6aff; }
+       
+        .playback-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        #playButton { background-color: #4CAF50; color: white; }
+        #playButton:hover:not(:disabled) { background-color: #66bb6a; }
         #stopButton { background-color: #f44336; color: white; }
         #stopButton:hover { background-color: #ff6b60; }
-        button:active { transform: scale(0.98); }
+        button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            color: #999;
+        }
+
+        button:active:not(:disabled) { transform: scale(0.98); }
 
         #status { text-align: center; margin-top: 15px; color: #c0c0c0; word-break: break-all; height: 20px; }
         
@@ -70,7 +85,7 @@
             color: #aaa;
             padding-right: 10px;
             text-align: right;
-            width: 40px; /* Adjust as needed */
+            width: 40px; 
         }
         #spectrogramContainer {
             position: relative;
@@ -82,35 +97,26 @@
             flex-grow: 1;
         }
         canvas { width: 100%; height: 100%; }
-        #playbackLine {
-            position: absolute;
-            top: 0;
-            left: 50%; /* 中央に固定 */
-            width: 2px;
-            height: 100%;
-            background-color: red;
-            display: none;
-        }
 
         #colorBarContainer {
-            width: 30px; /* カラーバーの幅 */
+            width: 30px; 
             height: 300px;
             margin-left: 10px;
             background: linear-gradient(to top, 
-                #000000 0%, /* 黒 */
-                #00008b 20%, /* 濃い青 */
-                #0000ff 40%, /* 青 */
-                #00ffff 60%, /* シアン */
-                #00ff00 80%, /* 緑 */
-                #ffff00 90%, /* 黄 */
-                #ff0000 100% /* 赤 */
+                #000000 0%, 
+                #00008b 20%, 
+                #0000ff 40%, 
+                #00ffff 60%, 
+                #00ff00 80%, 
+                #ffff00 90%, 
+                #ff0000 100% 
             );
             border-radius: 4px;
             position: relative;
         }
         .db-label {
             position: absolute;
-            right: 40px; /* カラーバーの右横に表示 */
+            right: 40px; 
             font-size: 10px;
             color: #ccc;
             white-space: nowrap;
@@ -125,19 +131,17 @@
 <body>
 
     <div class="container">
-        <h1>オーディオ周波数アイソレーター (v6)</h1>
-        <h2>スライダー連動・低速スクロール対応</h2>
+        <h1>オーディオ周波数アイソレーター (v9)</h1>
+        <h2>再生/停止ボタン分離・UI改善</h2>
 
         <input type="file" id="fileInput" accept="audio/*" style="display: none;">
         <button id="loadFileButton">ファイルを選択</button>
-        <button id="stopButton" style="display:none;">停止</button>
         <p id="status">ファイルが選択されていません</p>
 
         <div class="spectrogram-area">
             <div id="y-axis"></div>
             <div id="spectrogramContainer">
                 <canvas id="spectrogramCanvas"></canvas>
-                <div id="playbackLine"></div>
             </div>
             <div id="colorBarContainer">
                 <span class="db-label" style="top: -5px;">0 dB</span>
@@ -147,6 +151,11 @@
                 <span class="db-label" style="top: 75%;"> -70 dB</span>
                 <span class="db-label" style="bottom: -5px;">-90 dB</span>
             </div>
+        </div>
+
+        <div class="playback-controls">
+            <button id="playButton" disabled>再生</button>
+            <button id="stopButton" style="display: none;">停止</button>
         </div>
 
         <div class="controls">
@@ -162,11 +171,11 @@
         // --- DOM要素の取得 ---
         const fileInput = document.getElementById('fileInput');
         const loadFileButton = document.getElementById('loadFileButton');
+        const playButton = document.getElementById('playButton');
         const stopButton = document.getElementById('stopButton');
         const statusDisplay = document.getElementById('status');
         const canvas = document.getElementById('spectrogramCanvas');
         const ctx = canvas.getContext('2d');
-        const playbackLine = document.getElementById('playbackLine');
         const highCutoffSlider = document.getElementById('highCutoff');
         const highCutoffValueDisplay = document.getElementById('highCutoffValue');
         const lowCutoffSlider = document.getElementById('lowCutoff');
@@ -181,7 +190,8 @@
         let biquadFilterHighpass;
         let audioBuffer;
         let animationFrameId;
-        let frameCounter = 0; // ★修正点1: フレームカウンタを追加
+        let frameCounter = 0;
+        let isPlaying = false;
 
         const FFT_SIZE = 2048;
         const MAX_DB = 0;
@@ -190,11 +200,10 @@
         // --- イベントリスナー ---
         loadFileButton.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', handleFileSelect);
+        playButton.addEventListener('click', playAudio);
         stopButton.addEventListener('click', stopPlayback);
         
-        // ★修正点2: スライダーのイベントリスナーを修正
         highCutoffSlider.addEventListener('input', () => {
-            // 高域スライダーを動かした時、低域スライダーの値を下回ったら、低域スライダーも追従させる
             if (parseInt(highCutoffSlider.value) < parseInt(lowCutoffSlider.value)) {
                 lowCutoffSlider.value = highCutoffSlider.value;
             }
@@ -202,13 +211,11 @@
         });
 
         lowCutoffSlider.addEventListener('input', () => {
-            // 低域スライダーを動かした時、高域スライダーの値を超えたら、高域スライダーも追従させる
             if (parseInt(lowCutoffSlider.value) > parseInt(highCutoffSlider.value)) {
                 highCutoffSlider.value = lowCutoffSlider.value;
             }
             updateFilters();
         });
-
 
         // --- ファイル選択処理 ---
         function handleFileSelect(event) {
@@ -216,19 +223,25 @@
             if (!file) return;
 
             statusDisplay.textContent = file.name;
-            stopPlayback();
-            initAudioContext();
+            if (isPlaying) {
+                stopPlayback();
+            }
+            if (!audioContext || audioContext.state === 'closed') {
+                initAudioContext();
+            }
 
             const reader = new FileReader();
             reader.onload = function(e) {
                 audioContext.decodeAudioData(e.target.result)
                     .then(buffer => {
                         audioBuffer = buffer;
-                        playAudio();
+                        playButton.disabled = false;
                     })
                     .catch(err => {
                         console.error('Error decoding audio data:', err);
                         statusDisplay.textContent = 'エラー: ファイルをデコードできません';
+                        audioBuffer = null;
+                        playButton.disabled = true;
                     });
             };
             reader.readAsArrayBuffer(file);
@@ -245,7 +258,7 @@
             analyser.fftSize = FFT_SIZE;
             analyser.minDecibels = MIN_DB;
             analyser.maxDecibels = MAX_DB;
-            analyser.smoothingTimeConstant = 0.8; // 少し滑らかにする
+            analyser.smoothingTimeConstant = 0.8;
 
             biquadFilterHighpass = audioContext.createBiquadFilter();
             biquadFilterHighpass.type = 'highpass';
@@ -256,7 +269,11 @@
 
         // --- オーディオ再生 ---
         function playAudio() {
-            if (!audioBuffer) return;
+            if (!audioBuffer || isPlaying) return;
+
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
 
             audioSource = audioContext.createBufferSource();
             audioSource.buffer = audioBuffer;
@@ -271,11 +288,11 @@
             updateFilters();
             
             audioSource.start(0);
-            loadFileButton.style.display = 'none';
-            stopButton.style.display = 'block';
-            playbackLine.style.display = 'block';
-            playbackLine.style.left = '50%';
+            isPlaying = true;
 
+            playButton.style.display = 'none';
+            stopButton.style.display = 'inline-block';
+            
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             drawYAxis();
@@ -285,6 +302,7 @@
         // --- 停止処理 ---
         function stopPlayback() {
             if (audioSource) {
+                audioSource.onended = null;
                 try { audioSource.stop(0); } catch(e) {}
                 audioSource.disconnect();
                 audioSource = null;
@@ -293,12 +311,12 @@
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close();
+            
+            isPlaying = false;
+            if (audioBuffer) {
+                playButton.style.display = 'inline-block';
+                stopButton.style.display = 'none';
             }
-            loadFileButton.style.display = 'block';
-            stopButton.style.display = 'none';
-            playbackLine.style.display = 'none';
         }
         
         // --- フィルターの更新 ---
@@ -326,25 +344,26 @@
 
         function drawYAxis() {
             yAxisContainer.innerHTML = '';
-            if (!audioContext) {
-                yAxisContainer.insertAdjacentHTML('afterbegin', '<span>Hz</span>');
-                ['20k', '10k', '5k', '1k', '500', '100', '20'].forEach(label => yAxisContainer.insertAdjacentHTML('beforeend', `<div>${label}</div>`));
-                return;
-            }
-            const maxFreq = audioContext.sampleRate / 2;
+            const sampleRate = audioContext ? audioContext.sampleRate : 44100;
+            const maxFreq = sampleRate / 2;
             const freqs = [20, 100, 500, 1000, 5000, 10000, 20000];
             const height = canvas.clientHeight;
             
             yAxisContainer.style.height = `${height}px`;
             yAxisContainer.style.position = 'relative';
 
+            const minLog = Math.log(freqs[0]);
+            const maxLog = Math.log(maxFreq);
+
             freqs.forEach(freq => {
                 if (freq <= maxFreq) {
-                    const y = height - height * (Math.log(freq) - Math.log(freqs[0])) / (Math.log(maxFreq) - Math.log(freqs[0]));
+                    const yRatio = (Math.log(freq) - minLog) / (maxLog - minLog);
+                    const y = height * yRatio;
+                    
                     const el = document.createElement('div');
                     el.textContent = freq >= 1000 ? `${Math.round(freq/1000)}k` : `${freq}`;
                     el.style.position = 'absolute';
-                    el.style.bottom = `${y / height * 100}%`;
+                    el.style.bottom = `${y * 100 / height}%`;
                     el.style.right = '5px';
                     el.style.transform = 'translateY(50%)';
                     yAxisContainer.appendChild(el);
@@ -353,15 +372,14 @@
             yAxisContainer.insertAdjacentHTML('afterbegin', '<span style="position:absolute; top: -15px; right: 5px;">Hz</span>');
         }
 
-        // --- スペクトログラム描画 (リアルタイム) ---
+        // --- スペクトログラム描画 ---
         function drawSpectrogram() {
-            if (!analyser || !ctx) return;
-            
-            // ★修正点1: 描画更新を2フレームに1回にする
+            if (!analyser || !ctx || !audioContext) return;
+
             frameCounter++;
             if (frameCounter % 2 !== 0) {
                 animationFrameId = requestAnimationFrame(drawSpectrogram);
-                return; // このフレームは描画をスキップ
+                return;
             }
 
             const bufferLength = analyser.frequencyBinCount;
@@ -374,9 +392,23 @@
             const imageData = ctx.getImageData(1, 0, canvasWidth - 1, canvasHeight);
             ctx.putImageData(imageData, 0, 0);
 
+            const maxFreq = audioContext.sampleRate / 2;
+            const minFreq = 20;
+            const minLog = Math.log(minFreq);
+            const maxLog = Math.log(maxFreq);
+            const logRange = maxLog - minLog;
+
             for (let i = 0; i < canvasHeight; i++) {
-                const freqIndex = Math.floor((1 - i / canvasHeight) * bufferLength);
-                const value = dataArray[freqIndex];
+                const yPosRatio = (canvasHeight - 1 - i) / (canvasHeight - 1);
+                const logFreq = minLog + logRange * yPosRatio;
+                const freq = Math.exp(logFreq);
+                
+                const freqRatio = freq / maxFreq;
+                const freqIndex = Math.round(freqRatio * bufferLength);
+                
+                const clampedIndex = Math.max(0, Math.min(bufferLength - 1, freqIndex));
+                
+                const value = dataArray[clampedIndex];
                 const normalizedValue = (value / 255) * (MAX_DB - MIN_DB) + MIN_DB;
                 const color = getColorForDecibel(normalizedValue);
                 
@@ -384,10 +416,8 @@
                 ctx.fillRect(canvasWidth - 1, i, 1, 1);
             }
             
-            if (audioSource && audioContext.state === 'running') {
+            if (isPlaying) {
                 animationFrameId = requestAnimationFrame(drawSpectrogram);
-            } else {
-                 stopPlayback();
             }
         }
 
@@ -414,3 +444,4 @@
     </script>
 </body>
 </html>
+
